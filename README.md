@@ -1,4 +1,4 @@
-Here is the script
+Here Is The Scripts
 
 RIVALS = loadstring(game:HttpGet("https://raw.githubusercontent.com/KGuestCheatsJReal/ComeBack/refs/heads/main/Universal"))()
 
