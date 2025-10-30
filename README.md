@@ -1,7 +1,11 @@
 Here Is The Scripts
 
-UNIVERSAL GUI ALL SCRIPTS = loadstring(game:HttpGet("https://raw.githubusercontent.com/KGuestCheatsJReal/ComeBack/refs/heads/main/Universal"))()
+UNIVERSAL GUI HAS ALL SCRIPTS = loadstring(game:HttpGet("https://raw.githubusercontent.com/KGuestCheatsJReal/ComeBack/refs/heads/main/Universal"))()
+USE LOADSTRING FOR SCRIPTS
+Get Key Link For Universal GUI
 
-Universal GUI Key Link = https://link-center.net/1374534/tRhI1YlnWVlH
+Lootlabs = https://explore-lootlabs.com/link/myq2xNQE
 
-RIVALS KEY LINK = https://lootdest.org/s?888gaBs7
+Lootlabs Mirror Link = https://lootdest.org/s?myq2xNQE
+
+LinkVertise = https://link-center.net/1374534/tRhI1YlnWVlH -- PLS USE LOOTLABS IF U CAN
