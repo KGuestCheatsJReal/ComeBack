@@ -1,5 +1,3 @@
-Here Is The Scripts
-
 UNIVERSAL GUI HAS ALL SCRIPTS = loadstring(game:HttpGet("https://raw.githubusercontent.com/KGuestCheatsJReal/ComeBack/refs/heads/main/Universal"))()
 USE LOADSTRING FOR SCRIPTS
 -
