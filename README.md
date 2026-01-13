@@ -6,6 +6,4 @@ Get Key Link For Universal GUI
 
 Lootlabs = https://explore-lootlabs.com/link/myq2xNQE
 
-Lootlabs Mirror Link = https://lootdest.org/s?myq2xNQE
-
-LinkVertise = https://link-center.net/1374534/tRhI1YlnWVlH -- PLS USE LOOTLABS IF U CAN
+LinkVertise = https://link-center.net/1374534/tRhI1YlnWVlH -- PLS USE LINKVERTISE IF U CAN
