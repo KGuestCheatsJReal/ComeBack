@@ -1,0 +1,2581 @@
+	local GuiLibrary = loadstring(game:HttpGet("https://pastebin.com/raw/WRHQSgxu"))()
+	local menu = GuiLibrary.new("SFY_Hub_library")
+
+	local function showNotification(title, text, duration)
+		duration = duration or 3
+		pcall(function()
+			game.StarterGui:SetCore("SendNotification", {
+				Title = title,
+				Text = text,
+				Duration = duration
+			})
+		end)
+	end
+
+	menu:SetPremiumStatus(true)
+
+	-- Tabs
+	local Tabs = {
+		InfoTab = menu:CreateTab("Info"),
+		AutoTab = menu:CreateTab("Auto"),
+		BringTab = menu:CreateTab("Bring Weapons"),
+		PlayerTab = menu:CreateTab("Player"),
+		VisualTab = menu:CreateTab("ESP")
+	}
+
+	-- Create welcome panel
+	local welcomePanel = menu:CreateWelcomePanelTab(Tabs.InfoTab, {
+		ScriptName = "LOST AILES",
+		Version = "V2.5",
+		Developer = "SFY_devs",
+		Discord = "discord.gg/wcpvkVPEAA",
+		Description = "Farm ALL weapons of selected types",
+		Features = {
+			"⛽ Auto Fuel Generator",
+			"🩹 Auto Heal",
+			"🍖 Auto Eat",
+			"🍻 Auto Drink",
+			"🎯 Collect ALL weapons of each type",
+			"🔍 Scans entire workspace for weapons",
+			"📦 Brings every single instance",
+			"⚡ Mass teleportation system"
+		},
+		ThemeColor = Color3.fromRGB(255,100,100)
+	})
+
+	-- Use the builder
+	menu:CreateSeparator(Tabs.InfoTab, "🐞 CHANGE LOGS ")
+	local updateHistory = menu:UpdateHistoryBuilder(Tabs.InfoTab)
+	:Add("2026-01-15","update","INVISIBILITY ADDED","Stay Alive all you want")
+	:Add("2026-01-14","update","FIXED STAYING ALIVE","Fix the bug for toggle button in staying alive")
+	:Add("2026-01-14","update","ADDED AUTO FUEL","Auto Fuel generator with corpses")
+	:Add("2026-01-05","update","MASS TELEPORT","Now collects ALL weapons of each type")
+	:Add("2026-01-05","feature","SCAN ALL","Scans entire map for all weapon instances")
+	:Add("2026-01-05","feature","MASS COLLECTION","Brings every single weapon found")
+	:Add("2025-12-31","update","BULK SYSTEM","Changed from single to bulk collection")
+	:Build()
+
+-- Stats System
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+
+-- Wait for GUI to load
+local gui = player:WaitForChild("PlayerGui"):WaitForChild("StatGui"):WaitForChild("StatsFrame")
+
+-- Initialize stats with enabled = false (NOT true)
+local Stats = {
+    Thirst = {
+        label = gui.ThirstBarFrame.ThirstBar.TextLabel,
+        target = 43,
+        items = {"WaterBottle", "CanOfPop", "EnergyDrink", "MineralWaterBottle", "Drink", "CoffeeWater", "CanOfCoffee"},
+        enabled = false,  -- Changed from true to false
+        threshold = 43,
+        delay = 2,
+        activeLoop = nil
+    },
+    Hunger = {
+        label = gui.HungerBarFrame.HungerBar.TextLabel,
+        threshold = 70,
+        items = {"JarOfHoney", "JarOfJam", "CanOfPeas", "ChocolateDoughnut", "ChocolateMuffin", "StrawberryDoughnut", "Chikn1"},
+        enabled = false,  -- Changed from true to false
+        delay = 1.5,
+        activeLoop = nil
+    },
+    Health = {
+        label = gui.HealthBarFrame.HealthBar.TextLabel,
+        threshold = 80,
+        items = {"Bandage", "Medkit"},
+        enabled = false,  -- Changed from true to false
+        delay = 0.1,
+        activeLoop = nil
+    }
+}
+
+local function extractNumber(text)
+    if text and typeof(text) == "string" then
+        return tonumber(text:match("%d+")) or 0
+    end
+    return 0
+end
+
+local function findItemInWorld(itemName)
+    local LooseFoods = workspace.Map.LooseFoods
+    if not LooseFoods then return nil end
+    return LooseFoods:FindFirstChild(itemName, true)
+end
+
+local function useItem(itemName)
+    local item = findItemInWorld(itemName)
+    if item then
+        local idx = item:GetAttribute("InteractableIdx")
+        if idx then
+            ReplicatedStorage.Events.InteractableEvent:FireServer(idx, 2)
+            return true, itemName
+        end
+    end
+    return false, nil
+end
+
+-- Function to check and fix individual stats
+local function checkAndFixStat(statName, statData)
+    if not statData.enabled then return false end
+    
+    local value = extractNumber(statData.label.Text)
+    local threshold = statData.threshold or statData.target
+    
+    if value < threshold then
+        for _, item in ipairs(statData.items) do
+            local success, itemName = useItem(item)
+            if success then
+                local message = "Used " .. itemName .. " for " .. statName .. ". Current: " .. value
+                print(message)
+                showNotification("Auto-" .. statName, message, 1)
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Loop control functions
+local function startStatLoop(statName, statData)
+    -- Stop any existing loop first
+    if statData.activeLoop then
+        coroutine.close(statData.activeLoop)
+        statData.activeLoop = nil
+    end
+    
+    -- Don't start if not enabled
+    if not statData.enabled then 
+        print(statName .. " loop NOT started (disabled)")
+        return 
+    end
+    
+    print(statName .. " loop starting...")
+    
+    statData.activeLoop = coroutine.create(function()
+        while statData.enabled and statData.activeLoop do
+            local success, err = pcall(function()
+                checkAndFixStat(statName, statData)
+            end)
+            if not success then
+                warn("Error in " .. statName .. " loop:", err)
+            end
+            task.wait(statData.delay)
+        end
+        print(statName .. " loop ended naturally")
+    end)
+    
+    coroutine.resume(statData.activeLoop)
+    print(statName .. " loop started successfully")
+end
+
+local function stopStatLoop(statName, statData)
+    print("Stopping " .. statName .. " loop...")
+    statData.enabled = false  -- Ensure enabled is false
+    
+    if statData.activeLoop then
+        local success, err = pcall(function()
+            coroutine.close(statData.activeLoop)
+        end)
+        if not success then
+            warn("Error stopping " .. statName .. " loop:", err)
+        end
+        statData.activeLoop = nil
+    end
+    print(statName .. " loop stopped")
+end
+
+-- Create Auto Groups with loop control
+local AutoStatsGroup = menu:CreateCollapsibleGroup(Tabs.AutoTab, "Staying Alive", false, 360)
+menu:MarkAsNew(AutoStatsGroup:GetInstance(),"V2")
+-- Auto Heal toggle - set initial state to false
+AutoStatsGroup:AddToggle("Auto Heal", false, function(state)
+    Stats.Health.enabled = state
+    showNotification("Auto-Heal", state and "Enabled" or "Disabled", 1)
+    if state then
+        startStatLoop("Health", Stats.Health)
+    else
+        stopStatLoop("Health", Stats.Health)
+    end
+end)
+
+AutoStatsGroup:AddSlider("Health Threshold", 10, 100, Stats.Health.threshold, function(value)
+    Stats.Health.threshold = value
+    showNotification("Auto-Heal", "Threshold set to: " .. value, 1)
+end)
+
+-- Auto Eat toggle - set initial state to false
+AutoStatsGroup:AddToggle("Auto Eat", false, function(state)
+    Stats.Hunger.enabled = state
+    showNotification("Auto-Eat", state and "Enabled" or "Disabled", 1)
+    if state then
+        startStatLoop("Hunger", Stats.Hunger)
+    else
+        stopStatLoop("Hunger", Stats.Hunger)
+    end
+end)
+
+AutoStatsGroup:AddSlider("Hunger Threshold", 10, 100, Stats.Hunger.threshold, function(value)
+    Stats.Hunger.threshold = value
+    showNotification("Auto-Eat", "Threshold set to: " .. value, 1)
+end)
+
+-- Auto Drink toggle - set initial state to false
+AutoStatsGroup:AddToggle("Auto Drink", false, function(state)
+    Stats.Thirst.enabled = state
+    showNotification("Auto-Drink", state and "Enabled" or "Disabled", 1)
+    if state then
+        startStatLoop("Thirst", Stats.Thirst)
+    else
+        stopStatLoop("Thirst", Stats.Thirst)
+    end
+end)
+
+AutoStatsGroup:AddSlider("Thirst Threshold", 10, 100, Stats.Thirst.target, function(value)
+    Stats.Thirst.target = value
+    Stats.Thirst.threshold = value
+    showNotification("Auto-Drink", "Threshold set to: " .. value, 1)
+end)
+
+-- REMOVE THESE LINES - Don't start loops automatically
+-- task.wait(1) -- Wait a bit for GUI to fully load
+-- startStatLoop("Health", Stats.Health)
+-- startStatLoop("Hunger", Stats.Hunger)
+-- startStatLoop("Thirst", Stats.Thirst)
+
+-- Cleanup when script ends
+game:GetService("RunService").Heartbeat:Connect(function()
+    -- Check if labels still exist
+    if not Stats.Health.label or not Stats.Health.label.Parent then
+        stopStatLoop("Health", Stats.Health)
+    end
+    if not Stats.Hunger.label or not Stats.Hunger.label.Parent then
+        stopStatLoop("Hunger", Stats.Hunger)
+    end
+    if not Stats.Thirst.label or not Stats.Thirst.label.Parent then
+        stopStatLoop("Thirst", Stats.Thirst)
+    end
+end)
+
+-- Status indicator
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AutoStatStatus"
+screenGui.Parent = player.PlayerGui
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Name = "StatusLabel"
+statusLabel.Text = "Auto-Stat: Disabled"  -- Initial state is disabled
+statusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)  -- Red when disabled
+statusLabel.BackgroundTransparency = 1
+statusLabel.Size = UDim2.new(0, 150, 0, 25)
+statusLabel.Position = UDim2.new(1, -160, 0, 10)
+statusLabel.TextSize = 14
+statusLabel.Font = Enum.Font.SourceSansBold
+statusLabel.Parent = screenGui
+
+-- Update status label
+game:GetService("RunService").Heartbeat:Connect(function()
+    local activeCount = 0
+    if Stats.Health.enabled then activeCount = activeCount + 1 end
+    if Stats.Hunger.enabled then activeCount = activeCount + 1 end
+    if Stats.Thirst.enabled then activeCount = activeCount + 1 end
+    
+    if activeCount > 0 then
+        statusLabel.Text = "Auto-Stat: " .. activeCount .. "/3 Active"
+        statusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    else
+        statusLabel.Text = "Auto-Stat: Disabled"
+        statusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+    end
+end)
+
+print("Auto-Stat System Loaded!")
+showNotification("Auto-Stat", "System loaded successfully!\nToggle each feature ON/OFF as needed", 3)
+
+-- ============================================
+-- AUTO FUEL GENERATOR SYSTEM
+-- ============================================
+
+-- Create Auto Fuel Group
+local AutoFuelGroup = menu:CreateCollapsibleGroup(Tabs.AutoTab, "Auto Fuel Generator", false, 350)
+menu:MarkAsNew(AutoFuelGroup:GetInstance(),"NEW")
+-- State variables
+local autoFuelEnabled = false
+local autoFuelThread = nil
+
+-- Configuration
+local fuelConfig = {
+    minThreshold = 200,      -- Start refueling when below this
+    maxThreshold = 850,      -- Stop when reached
+    checkInterval = 5,       -- Check every X seconds
+    burnDelay = 0.2,         -- Delay between burning corpses
+    maxBurnsPerCycle = 15    -- Safety limit
+}
+
+-- Get required references
+local fuelTextLabel = workspace.Map.Generator.GeneratorStats.SurfaceGui.FuelBarFrame.FuelBar.TextLabel
+local corpsesFolder = workspace:FindFirstChild("Corpses")
+local ObjectActionEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("ObjectActionEvent")
+
+-- Function to get current fuel value
+local function getCurrentFuel()
+    local text = fuelTextLabel.Text
+    local currentStr = text:match("(%d+)%s*/")
+    return currentStr and tonumber(currentStr) or 0
+end
+
+-- Function to get fuel data (current and max)
+local function getFuelData()
+    local text = fuelTextLabel.Text
+    local currentStr, maxStr = text:match("(%d+)%s*/%s*(%d+)")
+    
+    if currentStr and maxStr then
+        return {
+            current = tonumber(currentStr),
+            max = tonumber(maxStr),
+            percent = (tonumber(currentStr) / tonumber(maxStr)) * 100
+        }
+    end
+    
+    return nil
+end
+
+-- Function to find all available corpses
+local function getAvailableCorpses()
+    local corpses = {}
+    
+    if corpsesFolder then
+        for _, model in ipairs(corpsesFolder:GetChildren()) do
+            if model:IsA("Model") then
+                local idx = model:GetAttribute("MoveableIdx")
+                if idx then
+                    table.insert(corpses, idx)
+                end
+            end
+        end
+    end
+    
+    return corpses
+end
+
+-- Function to burn corpses for fuel
+local function burnCorpsesForFuel(count)
+    local corpses = getAvailableCorpses()
+    
+    if #corpses == 0 then
+        showNotification("Auto Fuel", "❌ No corpses found!", 2)
+        return 0
+    end
+    
+    local burnCount = math.min(count or #corpses, #corpses)
+    local burned = 0
+    
+    showNotification("Auto Fuel", string.format("🔥 Burning %d corpses...", burnCount), 1)
+    
+    for i = 1, burnCount do
+        local idx = corpses[i]
+        if idx then
+            local success = pcall(function()
+                ObjectActionEvent:FireServer("Burn", idx)
+            end)
+            
+            if success then
+                burned = burned + 1
+            end
+            
+            task.wait(fuelConfig.burnDelay)
+        end
+    end
+    
+    return burned
+end
+
+-- Main auto fuel function
+local function autoFuelLoop()
+    showNotification("Auto Fuel", "✅ Started monitoring fuel levels", 2)
+    
+    while autoFuelEnabled do
+        local fuelData = getFuelData()
+        
+        if fuelData then
+            -- Show status every 30 seconds
+            if math.random(1, 10) == 1 then -- Random check to avoid spam
+                showNotification("Auto Fuel", 
+                    string.format("Current: %d/%d (%.1f%%)", 
+                    fuelData.current, fuelData.max, fuelData.percent), 
+                    1
+                )
+            end
+            
+            -- Check if fuel is low
+            if fuelData.current < fuelConfig.minThreshold then
+                showNotification("Auto Fuel", 
+                    string.format("⚠️ Low fuel detected: %d < %d", 
+                    fuelData.current, fuelConfig.minThreshold), 
+                    2
+                )
+                
+                -- Start refueling
+                local burned = burnCorpsesForFuel(fuelConfig.maxBurnsPerCycle)
+                
+                if burned > 0 then
+                    showNotification("Auto Fuel", 
+                        string.format("✅ Burned %d corpses for fuel", burned), 
+                        2
+                    )
+                end
+            end
+            
+            -- Check if we reached max threshold
+            if fuelData.current >= fuelConfig.maxThreshold then
+                showNotification("Auto Fuel", 
+                    string.format("✅ Generator full: %d/%d", 
+                    fuelData.current, fuelConfig.maxThreshold), 
+                    2
+                )
+            end
+        else
+            showNotification("Auto Fuel", "⚠️ Could not read fuel data", 2)
+        end
+        
+        -- Wait before next check
+        local waitTime = fuelConfig.checkInterval
+        
+        -- Show countdown
+        for i = waitTime, 1, -1 do
+            if not autoFuelEnabled then break end
+            task.wait(1)
+        end
+    end
+    
+    showNotification("Auto Fuel", "❌ Stopped monitoring", 2)
+end
+
+-- Toggle for Auto Fuel
+AutoFuelGroup:AddToggle("Turn on Auto fuel", false, function(state)
+    autoFuelEnabled = state
+    
+    if state then
+        showNotification("Auto Fuel", "Starting fuel monitoring...", 2)
+        
+        -- Start the auto fuel loop
+        autoFuelThread = coroutine.create(function()
+            autoFuelLoop()
+        end)
+        coroutine.resume(autoFuelThread)
+    else
+        showNotification("Auto Fuel", "Stopping fuel monitoring...", 1)
+        
+        -- Stop the auto fuel loop
+        if autoFuelThread then
+            coroutine.close(autoFuelThread)
+            autoFuelThread = nil
+        end
+    end
+end)
+
+-- Minimum Threshold Slider
+AutoFuelGroup:AddSlider("Minimum Threshold before refuel", 50, 500, fuelConfig.minThreshold, function(value)
+    fuelConfig.minThreshold = value
+    showNotification("Auto Fuel", string.format("Min threshold: %d", value), 1)
+end)
+
+-- Maximum Threshold Slider
+AutoFuelGroup:AddSlider("Maximum Threshold before stop", 300, 1000, fuelConfig.maxThreshold, function(value)
+    fuelConfig.maxThreshold = value
+    showNotification("Auto Fuel", string.format("Max threshold: %d", value), 1)
+end)
+
+-- Check Interval Slider
+AutoFuelGroup:AddSlider("Check Interval (seconds)", 1, 30, fuelConfig.checkInterval, function(value)
+    fuelConfig.checkInterval = value
+    showNotification("Auto Fuel", string.format("Check interval: %ds", value), 1)
+end)
+
+-- Burn Delay Slider
+AutoFuelGroup:AddSlider("Delay between burns (seconds)", 0.1, 1, fuelConfig.burnDelay, function(value)
+    fuelConfig.burnDelay = value
+    showNotification("Auto Fuel", string.format("Burn delay: %.2fs", value), 1)
+end)
+
+-- Max Burns Per Cycle Slider
+AutoFuelGroup:AddSlider("Max burns per cycle", 1, 30, fuelConfig.maxBurnsPerCycle, function(value)
+    fuelConfig.maxBurnsPerCycle = value
+    showNotification("Auto Fuel", string.format("Max burns: %d", value), 1)
+end)
+
+-- Quick Actions
+AutoFuelGroup:AddSeparator("⚡ Quick Actions")
+
+-- Manual refuel button
+AutoFuelGroup:AddButton("🔧 Manual Refuel Now", function()
+    local currentFuel = getCurrentFuel()
+    
+    if currentFuel >= fuelConfig.maxThreshold then
+        showNotification("Auto Fuel", "✅ Generator already full!", 2)
+        return
+    end
+    
+    showNotification("Auto Fuel", "🔄 Manual refuel started...", 2)
+    
+    local burned = burnCorpsesForFuel(fuelConfig.maxBurnsPerCycle)
+    
+    if burned > 0 then
+        showNotification("Auto Fuel", 
+            string.format("✅ Burned %d corpses\nNew fuel: %d", burned, getCurrentFuel()), 
+            3
+        )
+    else
+        showNotification("Auto Fuel", "❌ No corpses available to burn", 2)
+    end
+end)
+
+-- Check fuel status button
+AutoFuelGroup:AddButton("📊 Check Fuel Status", function()
+    local fuelData = getFuelData()
+    
+    if fuelData then
+        showNotification("Fuel Status", 
+            string.format("Current: %d/%d (%.1f%%)\nMin: %d | Max: %d", 
+            fuelData.current, fuelData.max, fuelData.percent,
+            fuelConfig.minThreshold, fuelConfig.maxThreshold), 
+            5
+        )
+    else
+        showNotification("Fuel Status", "❌ Could not read fuel data", 2)
+    end
+end)
+
+-- Scan corpses button
+AutoFuelGroup:AddButton("🔍 Scan Available Corpses", function()
+    local corpses = getAvailableCorpses()
+    local currentFuel = getCurrentFuel()
+    
+    showNotification("Corpse Scan", 
+        string.format("Available corpses: %d\nCurrent fuel: %d", 
+        #corpses, currentFuel), 
+        4
+    )
+end)
+
+-- Emergency refuel button (bypasses thresholds)
+AutoFuelGroup:AddButton("🚨 Emergency Refuel (Force)", function()
+    showNotification("Emergency Refuel", "⚠️ Forcing refuel regardless of thresholds...", 2)
+    
+    local burned = burnCorpsesForFuel(20)  -- Force burn 20 corpses
+    
+    showNotification("Emergency Refuel", 
+        string.format("✅ Force burned %d corpses", burned), 
+        3
+    )
+end)
+
+-- Status indicator
+AutoFuelGroup:AddSeparator("📋 Status")
+
+-- Create a status label
+local statusLabel = AutoFuelGroup:AddLabel("Status: Disabled")
+
+-- Function to update status
+local function updateAutoFuelStatus()
+    if autoFuelEnabled then
+        local currentFuel = getCurrentFuel()
+        local statusText = string.format("Status: Active | Fuel: %d/%d", 
+            currentFuel, fuelConfig.maxThreshold)
+        
+    else
+        
+    end
+end
+
+-- Update status every 10 seconds
+coroutine.wrap(function()
+    while true do
+        updateAutoFuelStatus()
+        task.wait(10)
+    end
+end)()
+
+-- Info panel
+AutoFuelGroup:AddSeparator("ℹ️ Information")
+AutoFuelGroup:AddLabel("System will automatically burn corpses when fuel drops below minimum threshold.")
+AutoFuelGroup:AddLabel("Refueling stops when fuel reaches maximum threshold.")
+
+-- Initialize with notification
+task.wait(2)
+showNotification("Auto Fuel", "Generator fuel system loaded!", 3)
+print("=== AUTO FUEL GENERATOR SYSTEM LOADED ===")
+
+
+	-- ============================================
+	-- MASS ITEM FARMING SYSTEM (Updated with new categories)
+	-- ============================================
+
+	local player = game.Players.LocalPlayer
+	local character = player.Character or player.CharacterAdded:Wait()
+	local hrp = character:WaitForChild("HumanoidRootPart")
+
+	-- Item Lists (UPDATED with new categories)
+	local ItemOptions = {
+		Guns = {
+			"AK47", "P90", "M249", "Pistol", "SawedShotGun"
+		},
+		Melee = {
+			"Axe", "Sword", "Crowbar"
+		},
+		Drink = {
+			"WaterBottle", "CanOfPop", "EnergyDrink", "MineralWaterBottle", "Drink", "CoffeeWater", "CanOfCoffee"
+		},
+		Food = {
+			"JarOfHoney", "JarOfJam", "CanOfPeas", "ChocolateDoughnut", "ChocolateMuffin", "StrawberryDoughnut", "Chikn1", "Croissant"
+		},
+		Material = {
+			"BoxOfScrew", "SheetMetal", "ScrapPile"
+		}
+	}
+
+	local DefaultSelections = {
+		Guns = {"AK47", "P90"},
+		Melee = {"Axe"},
+		Drink = {"WaterBottle", "EnergyDrink"},
+		Food = {"JarOfHoney", "ChocolateDoughnut"},
+		Material = {"BoxOfScrew", "SheetMetal"}
+	}
+
+	-- STATE MANAGEMENT
+	local ItemConfig = {
+		Guns = {},
+		Melee = {},
+		Drink = {},
+		Food = {},
+		Material = {}
+	}
+
+	-- Function to find ALL items of a specific type
+	local function findAllItems(itemName)
+		local allItems = {}
+		
+		-- Method 1: Check Interactables.Weapons path
+		local weaponsPath = workspace:FindFirstChild("Interactables")
+		if weaponsPath and weaponsPath:FindFirstChild("Weapons") then
+			local weapons = weaponsPath.Weapons:GetDescendants()
+			for _, item in ipairs(weapons) do
+				if item.Name == itemName then
+					table.insert(allItems, item)
+					print("Found", itemName, "in Interactables.Weapons")
+				end
+			end
+		end
+		
+		-- Method 2: Check Map.LooseFoods (for food, drinks, materials)
+		local looseFoods = workspace:FindFirstChild("Map")
+		if looseFoods and looseFoods:FindFirstChild("LooseFoods") then
+			local foods = looseFoods.LooseFoods:GetDescendants()
+			for _, item in ipairs(foods) do
+				if item.Name == itemName then
+					table.insert(allItems, item)
+					print("Found", itemName, "in Map.LooseFoods")
+				end
+			end
+		end
+		
+		-- Method 3: Scan entire workspace (fallback)
+		if #allItems == 0 then
+			local allDescendants = workspace:GetDescendants()
+			for _, item in ipairs(allDescendants) do
+				if item.Name == itemName and (item:IsA("Model") or item:IsA("Part")) then
+					table.insert(allItems, item)
+					print("Found", itemName, "in workspace (fallback)")
+				end
+			end
+		end
+		
+		print("Total found:", #allItems, itemName)
+		return allItems
+	end
+
+	-- Function to teleport ALL items of a type to player
+	local function teleportAllItemsOfType(itemName)
+		local items = findAllItems(itemName)
+		local teleportedCount = 0
+		
+		if #items == 0 then
+			showNotification("No Items", "No " .. itemName .. " found in map", 2)
+			return 0
+		end
+		
+		showNotification("Scanning", "Found " .. #items .. " " .. itemName, 1)
+		
+		for i, item in ipairs(items) do
+			local moveableIdx = item:GetAttribute("MoveableIdx")
+			
+			if moveableIdx then
+				local moveableEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("MoveableEvent")
+				
+				-- Pick up item
+				moveableEvent:FireServer("Pick up", moveableIdx, hrp)
+				task.wait(0.3) -- Faster for bulk
+				
+				-- Drop at player's current location
+				local playerCFrame = hrp.CFrame
+				moveableEvent:FireServer("Drop", playerCFrame)
+				
+				teleportedCount = teleportedCount + 1
+				print("Teleported", itemName, "#" .. i, "MoveableIdx:", moveableIdx)
+				
+				-- Show progress every 5 items
+				if i % 5 == 0 then
+					showNotification("Progress", itemName .. ": " .. i .. "/" .. #items, 1)
+				end
+			else
+				print("Skipping", itemName, "#" .. i, "- No MoveableIdx")
+			end
+			
+			task.wait(0.2) -- Small delay between teleports
+		end
+		
+		return teleportedCount
+	end
+
+	-- Function to equip ALL weapons of a type
+	local function equipAllWeaponsOfType(weaponName)
+		local weapons = findAllItems(weaponName)
+		local equippedCount = 0
+		
+		for i, weapon in ipairs(weapons) do
+			local interactableIdx = weapon:GetAttribute("InteractableIdx")
+			
+			if interactableIdx then
+				local interactableEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("InteractableEvent")
+				interactableEvent:FireServer(interactableIdx, 2) -- 2 = equip
+				
+				equippedCount = equippedCount + 1
+				print("Equipped", weaponName, "#" .. i)
+			end
+			
+			task.wait(0.1)
+		end
+		
+		return equippedCount
+	end
+
+	-- Function to use ALL consumables of a type
+	local function useAllConsumablesOfType(itemName)
+		local items = findAllItems(itemName)
+		local usedCount = 0
+		
+		for i, item in ipairs(items) do
+			local interactableIdx = item:GetAttribute("InteractableIdx")
+			
+			if interactableIdx then
+				local interactableEvent = game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("InteractableEvent")
+				interactableEvent:FireServer(interactableIdx, 2) -- 2 = use
+				
+				usedCount = usedCount + 1
+				print("Used", itemName, "#" .. i)
+			end
+			
+			task.wait(0.1)
+		end
+		
+		return usedCount
+	end
+
+	-- Function to save selection state
+	local function saveSelection(category, selections)
+		ItemConfig[category] = selections
+		showNotification(category, "Selected " .. #selections .. " types", 2)
+	end
+
+	-- Create Bring Items Group
+	local BringGroup = menu:CreateCollapsibleGroup(Tabs.BringTab, "FARM ALL ITEMS", true, 450)
+menu:MarkAsPremium(BringGroup:GetInstance(),"PAID")
+	-- GUNS SECTION
+	BringGroup:AddSeparator("🔫 GUNS - COLLECT ALL")
+	BringGroup:AddToggle("Auto Farm Guns", function(state)
+		showNotification("Guns Auto", state and "Enabled" or "Disabled", 1)
+	end)
+
+	local gunsDropdown = BringGroup:AddMultiDropdown("Select Gun Types", ItemOptions.Guns, DefaultSelections.Guns, function(selections)
+		saveSelection("Guns", selections)
+	end)
+
+	BringGroup:AddButton("📥 Farm ALL Selected Guns", function()
+		local selectedGunTypes = ItemConfig.Guns
+		if #selectedGunTypes == 0 then
+			showNotification("No Selection", "Select gun types to farm", 2)
+			return
+		end
+		
+		local totalTeleported = 0
+		
+		showNotification("Starting Farm", "Farming " .. #selectedGunTypes .. " gun types...", 2)
+		
+		for _, gunType in ipairs(selectedGunTypes) do
+			showNotification("Farming", "Collecting ALL " .. gunType .. "...", 1)
+			
+			local teleported = teleportAllItemsOfType(gunType)
+			totalTeleported = totalTeleported + teleported
+			
+			showNotification("Progress", gunType .. ": " .. teleported .. " collected", 1)
+			task.wait(1)
+		end
+		
+		showNotification("Farming Complete", 
+			"✅ Collected " .. totalTeleported .. " guns\n" ..
+			"📊 Types: " .. #selectedGunTypes, 
+			4
+		)
+	end)
+
+	BringGroup:AddButton("🎯 Equip ALL Found Guns", function()
+		local selectedGunTypes = ItemConfig.Guns
+		if #selectedGunTypes == 0 then
+			showNotification("No Selection", "Select gun types first", 2)
+			return
+		end
+		
+		local totalEquipped = 0
+		
+		for _, gunType in ipairs(selectedGunTypes) do
+			local equipped = equipAllWeaponsOfType(gunType)
+			totalEquipped = totalEquipped + equipped
+			showNotification("Equipping", gunType .. ": " .. equipped .. " equipped", 1)
+			task.wait(0.5)
+		end
+		
+		showNotification("Equip Complete", "✅ " .. totalEquipped .. " guns equipped", 3)
+	end)
+
+	-- MELEE SECTION
+	BringGroup:AddSeparator("⚔️ MELEE - COLLECT ALL")
+	BringGroup:AddToggle("Auto Farm Melee", function(state)
+		showNotification("Melee Auto", state and "Enabled" or "Disabled", 1)
+	end)
+
+	local meleeDropdown = BringGroup:AddMultiDropdown("Select Melee Types", ItemOptions.Melee, DefaultSelections.Melee, function(selections)
+		saveSelection("Melee", selections)
+	end)
+
+	BringGroup:AddButton("📥 Farm ALL Selected Melee", function()
+		local selectedMeleeTypes = ItemConfig.Melee
+		if #selectedMeleeTypes == 0 then
+			showNotification("No Selection", "Select melee types to farm", 2)
+			return
+		end
+		
+		local totalTeleported = 0
+		
+		showNotification("Starting Farm", "Farming " .. #selectedMeleeTypes .. " melee types...", 2)
+		
+		for _, meleeType in ipairs(selectedMeleeTypes) do
+			showNotification("Farming", "Collecting ALL " .. meleeType .. "...", 1)
+			
+			local teleported = teleportAllItemsOfType(meleeType)
+			totalTeleported = totalTeleported + teleported
+			
+			showNotification("Progress", meleeType .. ": " .. teleported .. " collected", 1)
+			task.wait(1)
+		end
+		
+		showNotification("Farming Complete", 
+			"✅ Collected " .. totalTeleported .. " melee weapons\n" ..
+			"📊 Types: " .. #selectedMeleeTypes, 
+			4
+		)
+	end)
+
+	-- DRINK SECTION (NEW)
+	BringGroup:AddSeparator("🥤 DRINKS - COLLECT ALL")
+	BringGroup:AddToggle("Auto Farm Drinks", function(state)
+		showNotification("Drinks Auto", state and "Enabled" or "Disabled", 1)
+	end)
+
+	local drinksDropdown = BringGroup:AddMultiDropdown("Select Drink Types", ItemOptions.Drink, DefaultSelections.Drink, function(selections)
+		saveSelection("Drink", selections)
+	end)
+
+	BringGroup:AddButton("📥 Farm ALL Selected Drinks", function()
+		local selectedDrinkTypes = ItemConfig.Drink
+		if #selectedDrinkTypes == 0 then
+			showNotification("No Selection", "Select drink types to farm", 2)
+			return
+		end
+		
+		local totalTeleported = 0
+		
+		showNotification("Starting Farm", "Farming " .. #selectedDrinkTypes .. " drink types...", 2)
+		
+		for _, drinkType in ipairs(selectedDrinkTypes) do
+			showNotification("Farming", "Collecting ALL " .. drinkType .. "...", 1)
+			
+			local teleported = teleportAllItemsOfType(drinkType)
+			totalTeleported = totalTeleported + teleported
+			
+			showNotification("Progress", drinkType .. ": " .. teleported .. " collected", 1)
+			task.wait(1)
+		end
+		
+		showNotification("Farming Complete", 
+			"✅ Collected " .. totalTeleported .. " drinks\n" ..
+			"📊 Types: " .. #selectedDrinkTypes, 
+			4
+		)
+	end)
+
+	BringGroup:AddButton("🥤 Use ALL Found Drinks", function()
+		local selectedDrinkTypes = ItemConfig.Drink
+		if #selectedDrinkTypes == 0 then
+			showNotification("No Selection", "Select drink types first", 2)
+			return
+		end
+		
+		local totalUsed = 0
+		
+		for _, drinkType in ipairs(selectedDrinkTypes) do
+			local used = useAllConsumablesOfType(drinkType)
+			totalUsed = totalUsed + used
+			showNotification("Using", drinkType .. ": " .. used .. " used", 1)
+			task.wait(0.5)
+		end
+		
+		showNotification("Use Complete", "✅ " .. totalUsed .. " drinks consumed", 3)
+	end)
+
+	-- FOOD SECTION (NEW)
+	BringGroup:AddSeparator("🍔 FOOD - COLLECT ALL")
+	BringGroup:AddToggle("Auto Farm Food", function(state)
+		showNotification("Food Auto", state and "Enabled" or "Disabled", 1)
+	end)
+
+	local foodDropdown = BringGroup:AddMultiDropdown("Select Food Types", ItemOptions.Food, DefaultSelections.Food, function(selections)
+		saveSelection("Food", selections)
+	end)
+
+	BringGroup:AddButton("📥 Farm ALL Selected Food", function()
+		local selectedFoodTypes = ItemConfig.Food
+		if #selectedFoodTypes == 0 then
+			showNotification("No Selection", "Select food types to farm", 2)
+			return
+		end
+		
+		local totalTeleported = 0
+		
+		showNotification("Starting Farm", "Farming " .. #selectedFoodTypes .. " food types...", 2)
+		
+		for _, foodType in ipairs(selectedFoodTypes) do
+			showNotification("Farming", "Collecting ALL " .. foodType .. "...", 1)
+			
+			local teleported = teleportAllItemsOfType(foodType)
+			totalTeleported = totalTeleported + teleported
+			
+			showNotification("Progress", foodType .. ": " .. teleported .. " collected", 1)
+			task.wait(1)
+		end
+		
+		showNotification("Farming Complete", 
+			"✅ Collected " .. totalTeleported .. " food items\n" ..
+			"📊 Types: " .. #selectedFoodTypes, 
+			4
+		)
+	end)
+
+	BringGroup:AddButton("🍔 Use ALL Found Food", function()
+		local selectedFoodTypes = ItemConfig.Food
+		if #selectedFoodTypes == 0 then
+			showNotification("No Selection", "Select food types first", 2)
+			return
+		end
+		
+		local totalUsed = 0
+		
+		for _, foodType in ipairs(selectedFoodTypes) do
+			local used = useAllConsumablesOfType(foodType)
+			totalUsed = totalUsed + used
+			showNotification("Using", foodType .. ": " .. used .. " used", 1)
+			task.wait(0.5)
+		end
+		
+		showNotification("Use Complete", "✅ " .. totalUsed .. " food items consumed", 3)
+	end)
+
+	-- MATERIAL SECTION (NEW)
+	BringGroup:AddSeparator("🔩 MATERIALS - COLLECT ALL")
+	BringGroup:AddToggle("Auto Farm Materials", function(state)
+		showNotification("Materials Auto", state and "Enabled" or "Disabled", 1)
+	end)
+
+	local materialDropdown = BringGroup:AddMultiDropdown("Select Material Types", ItemOptions.Material, DefaultSelections.Material, function(selections)
+		saveSelection("Material", selections)
+	end)
+
+	BringGroup:AddButton("📥 Farm ALL Selected Materials", function()
+		local selectedMaterialTypes = ItemConfig.Material
+		if #selectedMaterialTypes == 0 then
+			showNotification("No Selection", "Select material types to farm", 2)
+			return
+		end
+		
+		local totalTeleported = 0
+		
+		showNotification("Starting Farm", "Farming " .. #selectedMaterialTypes .. " material types...", 2)
+		
+		for _, materialType in ipairs(selectedMaterialTypes) do
+			showNotification("Farming", "Collecting ALL " .. materialType .. "...", 1)
+			
+			local teleported = teleportAllItemsOfType(materialType)
+			totalTeleported = totalTeleported + teleported
+			
+			showNotification("Progress", materialType .. ": " .. teleported .. " collected", 1)
+			task.wait(1)
+		end
+		
+		showNotification("Farming Complete", 
+			"✅ Collected " .. totalTeleported .. " materials\n" ..
+			"📊 Types: " .. #selectedMaterialTypes, 
+			4
+		)
+	end)
+
+	-- MASS FARMING SECTION
+	BringGroup:AddSeparator("🚀 MASS FARMING")
+	local farmDelay = 0.2
+	local isFarming = false
+	local farmThread = nil
+
+	BringGroup:AddToggle("🔄 Auto Farm Loop", function(state)
+		isFarming = state
+		
+		if state then
+			showNotification("Auto Farm", "Started - Farming ALL selected items", 2)
+			
+			farmThread = coroutine.create(function()
+				while isFarming do
+					-- Farm all categories
+					local categories = {"Guns", "Melee", "Drink", "Food", "Material"}
+					
+					for _, category in ipairs(categories) do
+						for _, itemType in ipairs(ItemConfig[category]) do
+							if not isFarming then break end
+							teleportAllItemsOfType(itemType)
+							task.wait(1)
+						end
+						if not isFarming then break end
+					end
+					
+					showNotification("Cycle Complete", "Waiting 15 seconds...", 2)
+					task.wait(15) -- Wait before next farming cycle
+				end
+			end)
+			
+			coroutine.resume(farmThread)
+		else
+			showNotification("Auto Farm", "Stopped", 1)
+			if farmThread then
+				coroutine.close(farmThread)
+				farmThread = nil
+			end
+		end
+	end)
+
+	BringGroup:AddSlider("Farming Speed", 0.1, 1, 0.2, function(value)
+		farmDelay = value
+		showNotification("Speed", "Farming delay: " .. value .. "s", 1)
+	end)
+
+	-- QUICK ACTIONS
+	BringGroup:AddSeparator("⚡ QUICK ACTIONS")
+	BringGroup:AddButton("📦 Farm ALL Selected Items", function()
+		local allTypes = {}
+		local categories = {"Guns", "Melee", "Drink", "Food", "Material"}
+		
+		for _, category in ipairs(categories) do
+			for _, item in ipairs(ItemConfig[category]) do 
+				table.insert(allTypes, item) 
+			end
+		end
+		
+		if #allTypes == 0 then
+			showNotification("No Selection", "Select item types first", 2)
+			return
+		end
+		
+		showNotification("MASS FARMING", "📊 Farming " .. #allTypes .. " item types...", 3)
+		
+		local totalCollected = 0
+		
+		for i, itemType in ipairs(allTypes) do
+			showNotification("Farming", itemType .. " (" .. i .. "/" .. #allTypes .. ")", 1)
+			
+			local collected = teleportAllItemsOfType(itemType)
+			totalCollected = totalCollected + collected
+			
+			showNotification("Progress", 
+				itemType .. ": " .. collected .. "\n" ..
+				"Total: " .. totalCollected, 
+				2
+			)
+			
+			if i < #allTypes then
+				task.wait(2)
+			end
+		end
+		
+		showNotification("MASS FARM COMPLETE", 
+			"🎉 Collected " .. totalCollected .. " items\n" ..
+			"🎯 Categories: " .. #categories .. "\n" ..
+			"📦 Types: " .. #allTypes .. "\n" ..
+			"✅ All items brought to you!", 
+			6
+		)
+	end)
+
+	BringGroup:AddButton("🔍 Scan & Count All Items", function()
+		local allTypes = {}
+		local categories = {"Guns", "Melee", "Drink", "Food", "Material"}
+		local categoryTotals = {}
+		
+		for _, category in ipairs(categories) do
+			categoryTotals[category] = 0
+			for _, item in ipairs(ItemConfig[category]) do 
+				table.insert(allTypes, item) 
+			end
+		end
+		
+		if #allTypes == 0 then
+			showNotification("No Selection", "Select item types first", 2)
+			return
+		end
+		
+		local totalFound = 0
+		local counts = {}
+		
+		showNotification("Scanning", "Scanning for " .. #allTypes .. " item types...", 2)
+		
+		for _, itemType in ipairs(allTypes) do
+			local items = findAllItems(itemType)
+			counts[itemType] = #items
+			totalFound = totalFound + #items
+			
+			-- Update category total
+			for category, itemsList in pairs(ItemOptions) do
+				if table.find(itemsList, itemType) then
+					categoryTotals[category] = categoryTotals[category] + #items
+				end
+			end
+			
+			print("Scanned", itemType, "Found:", #items)
+		end
+		
+		-- Build result message
+		local result = "📊 SCAN RESULTS:\n\n"
+		for category, total in pairs(categoryTotals) do
+			if total > 0 then
+				result = result .. "• " .. category .. ": " .. total .. "\n"
+			end
+		end
+		result = result .. "\n📦 TOTAL: " .. totalFound .. " items"
+		
+		showNotification("Scan Complete", result, 8)
+	end)
+
+	BringGroup:AddButton("❌ Clear All Selections", function()
+		local categories = {"Guns", "Melee", "Drink", "Food", "Material"}
+		for _, category in ipairs(categories) do
+			ItemConfig[category] = {}
+		end
+		
+		gunsDropdown:Set({})
+		meleeDropdown:Set({})
+		drinksDropdown:Set({})
+		foodDropdown:Set({})
+		materialDropdown:Set({})
+		
+		showNotification("Cleared", "All selections cleared", 2)
+	end)
+
+	-- INFO PANEL
+	BringGroup:AddSeparator("📋 INFO")
+	local infoText = [[
+	HOW TO USE:
+	1. Select item types you want to farm
+	2. Click "Farm ALL Selected [Category]"
+	3. System will find ALL instances of each type
+	4. Every single item will be teleported to you
+
+	FEATURES:
+	• Scans entire map for items
+	• Finds EVERY instance of selected types
+	• Mass teleportation system
+	• Auto-farming loop available
+
+	CATEGORIES:
+	• 🔫 Guns - Weapons
+	• ⚔️ Melee - Close combat
+	• 🥤 Drinks - Thirst restoration
+	• 🍔 Food - Hunger restoration
+	• 🔩 Materials - Crafting items
+	]]
+
+	BringGroup:AddLabel("System will collect ALL items of selected types from the entire map.")
+
+	-- Initialize with default selections
+	ItemConfig.Guns = DefaultSelections.Guns
+	ItemConfig.Melee = DefaultSelections.Melee
+	ItemConfig.Drink = DefaultSelections.Drink
+	ItemConfig.Food = DefaultSelections.Food
+	ItemConfig.Material = DefaultSelections.Material
+
+	print("=== MASS ITEM FARMER LOADED ===")
+	showNotification("Item Farmer", 
+		"🎯 System Ready!\n" ..
+		"📊 5 categories available\n" ..
+		"🥤 Drinks, Food & Materials added\n" ..
+		"⚡ Will find every single instance in the map", 
+		5
+	)
+
+	-- ============================================
+	-- PLAYER TAB FIXED VERSION
+	-- ============================================
+
+	-- Get required services
+	local Services = {
+		Workspace = game:GetService("Workspace"),
+		RunService = game:GetService("RunService"),
+		UserInputService = game:GetService("UserInputService"),
+		Lighting = game:GetService("Lighting")
+	}
+
+	local Player = game.Players.LocalPlayer
+	local Camera = workspace.CurrentCamera
+	local Character = Player.Character or Player.CharacterAdded:Wait()
+	local Humanoid = Character:WaitForChild("Humanoid")
+
+	-- Update Character and Humanoid when character changes
+	Player.CharacterAdded:Connect(function(newChar)
+		Character = newChar
+		Humanoid = newChar:WaitForChild("Humanoid")
+	end)
+
+	--// 🧍 Player Settings (optimized)
+	local PlayerSettings = {
+		Noclip = false,
+		InfiniteJump = false,
+		TpWalk = {Enabled = false, Speed = 50, Connection = nil},
+		FOV = {Enabled = false, Value = Camera.FieldOfView},
+		FullBright = false,
+		FullBrightConnection = nil,
+		Fly = {Enabled = false, Speed = 30, BodyVelocity = nil, Connection = nil},
+		SpeedHack = {Enabled = false, Speed = 90, WSLoop = nil, WSCA = nil}
+	}
+	
+	local playerVisualGroup = menu:CreateCollapsibleGroup(Tabs.PlayerTab, "LOCAL PLAYER VISUAL SETTINGS", false, 130)
+	menu:MarkAsNew(playerVisualGroup:GetInstance(), "V2")
+	
+	local playerSpeedGroup = menu:CreateCollapsibleGroup(Tabs.PlayerTab, "LOCAL PLAYER SPEED HACK", true, 240)
+	menu:MarkAsNew(playerSpeedGroup:GetInstance(), "V2")
+	
+	local playerCharacterGroup = menu:CreateCollapsibleGroup(Tabs.PlayerTab, "LOCAL PLAYER CHARACTER MODS", false, 130)
+	menu:MarkAsNew(playerCharacterGroup:GetInstance(), "V2")
+	
+	-- FOV
+	playerVisualGroup:AddToggle("Player FOV", false, function(state)
+		PlayerSettings.FOV.Enabled = state
+		Camera.FieldOfView = state and PlayerSettings.FOV.Value or 70
+	end)
+	
+	playerVisualGroup:AddSlider("FOV Value", 50, 120, PlayerSettings.FOV.Value, function(value)
+		PlayerSettings.FOV.Value = value
+		if PlayerSettings.FOV.Enabled then 
+			Camera.FieldOfView = value 
+		end
+	end)
+
+	-- Full Bright
+	playerVisualGroup:AddToggle("Full Bright", false, function(state) 
+		PlayerSettings.FullBright = state
+	
+		-- Remove existing connection if any
+		if PlayerSettings.FullBrightConnection then
+			PlayerSettings.FullBrightConnection:Disconnect()
+			PlayerSettings.FullBrightConnection = nil
+		end
+	
+		if state then
+			-- Create a continuous loop to enforce full bright settings
+			PlayerSettings.FullBrightConnection = Services.RunService.Heartbeat:Connect(function()
+				if PlayerSettings.FullBright then
+					Services.Lighting.Brightness = 2
+					Services.Lighting.ClockTime = 12
+					Services.Lighting.FogEnd = 1e10
+					Services.Lighting.GlobalShadows = false
+					Services.Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+					Services.Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+					Services.Lighting.TimeOfDay = "12:00:00"
+				end
+			end)
+		else
+			-- Reset to normal
+			Services.Lighting.Brightness = 1
+			Services.Lighting.ClockTime = 14
+			Services.Lighting.FogEnd = 100000
+			Services.Lighting.GlobalShadows = true
+			Services.Lighting.Ambient = Color3.fromRGB(0, 0, 0)
+			Services.Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+			Services.Lighting.TimeOfDay = "14:00:00"
+		end
+	end)
+	
+	-- SPEED HACK FUNCTIONS
+	local function applyLoopspeed(speaker, speed)
+		local Char = speaker.Character or Services.Workspace:FindFirstChild(speaker.Name)
+		local Human = Char and Char:FindFirstChildWhichIsA("Humanoid")
+		if not Human then return end
+	
+		local function WalkSpeedChange()
+			if Char and Human and Human.Parent then
+				Human.WalkSpeed = speed
+			end
+		end
+	
+		WalkSpeedChange()
+	
+		if PlayerSettings.SpeedHack.WSLoop then
+			PlayerSettings.SpeedHack.WSLoop:Disconnect()
+		end
+		PlayerSettings.SpeedHack.WSLoop = Human:GetPropertyChangedSignal("WalkSpeed"):Connect(WalkSpeedChange)
+	
+		if PlayerSettings.SpeedHack.WSCA then
+			PlayerSettings.SpeedHack.WSCA:Disconnect()
+		end
+		PlayerSettings.SpeedHack.WSCA = speaker.CharacterAdded:Connect(function(nChar)
+			repeat task.wait(0.1)
+				Human = nChar:FindFirstChildWhichIsA("Humanoid")
+			until Human
+			Char = nChar
+			WalkSpeedChange()
+			if PlayerSettings.SpeedHack.WSLoop then
+				PlayerSettings.SpeedHack.WSLoop:Disconnect()
+			end
+			PlayerSettings.SpeedHack.WSLoop = Human:GetPropertyChangedSignal("WalkSpeed"):Connect(WalkSpeedChange)
+		end)
+	end
+	
+	local function disableLoopspeed()
+		if PlayerSettings.SpeedHack.WSLoop then
+			PlayerSettings.SpeedHack.WSLoop:Disconnect()
+			PlayerSettings.SpeedHack.WSLoop = nil
+		end
+		if PlayerSettings.SpeedHack.WSCA then
+			PlayerSettings.SpeedHack.WSCA:Disconnect()
+			PlayerSettings.SpeedHack.WSCA = nil
+		end
+		PlayerSettings.SpeedHack.Enabled = false
+	
+		local Char = Player.Character or Services.Workspace:FindFirstChild(Player.Name)
+		local Human = Char and Char:FindFirstChildWhichIsA("Humanoid")
+		if Human then 
+			Human.WalkSpeed = 16 
+		end
+	end
+	
+	-- SPEED HACK
+	playerSpeedGroup:AddToggle("SPEED HACK", false, function(state)
+		PlayerSettings.SpeedHack.Enabled = state
+		if state then
+			applyLoopspeed(Player, PlayerSettings.SpeedHack.Speed)
+		else
+			disableLoopspeed()
+		end
+	end)
+	
+	playerSpeedGroup:AddSlider("Speed Value", 16, 500, 90, function(value)
+		PlayerSettings.SpeedHack.Speed = value
+		if PlayerSettings.SpeedHack.Enabled then
+			local Char = Player.Character or Services.Workspace:FindFirstChild(Player.Name)
+			local Human = Char and Char:FindFirstChildWhichIsA("Humanoid")
+			if Human then 
+				Human.WalkSpeed = value 
+			end
+		end
+	end)
+	
+	-- FLY FUNCTION
+	local function toggleFly(state)
+		if state then
+			PlayerSettings.Fly.Enabled = true
+			local character = Player.Character or Player.CharacterAdded:Wait()
+			if not character:FindFirstChild("HumanoidRootPart") then
+				character:WaitForChild("HumanoidRootPart")
+			end
+	
+			PlayerSettings.Fly.BodyVelocity = Instance.new("BodyVelocity")
+			PlayerSettings.Fly.BodyVelocity.Name = "FlyBodyVelocity"
+			PlayerSettings.Fly.BodyVelocity.Velocity = Vector3.new(0, 0, 0)
+			PlayerSettings.Fly.BodyVelocity.MaxForce = Vector3.new(40000, 40000, 40000)
+			PlayerSettings.Fly.BodyVelocity.Parent = character.HumanoidRootPart
+	
+			PlayerSettings.Fly.Connection = Services.RunService.Heartbeat:Connect(function()
+				if not PlayerSettings.Fly.Enabled or not character or not character:FindFirstChild("HumanoidRootPart") then
+					if PlayerSettings.Fly.Connection then
+						PlayerSettings.Fly.Connection:Disconnect()
+					end
+					return
+				end
+	
+				local root = character.HumanoidRootPart
+				local moveDirection = Vector3.new(0, 0, 0)
+	
+				if Services.UserInputService:IsKeyDown(Enum.KeyCode.W) then
+					moveDirection = moveDirection + Camera.CFrame.LookVector
+				end
+				if Services.UserInputService:IsKeyDown(Enum.KeyCode.S) then
+					moveDirection = moveDirection - Camera.CFrame.LookVector
+				end
+				if Services.UserInputService:IsKeyDown(Enum.KeyCode.A) then
+					moveDirection = moveDirection - Camera.CFrame.RightVector
+				end
+				if Services.UserInputService:IsKeyDown(Enum.KeyCode.D) then
+					moveDirection = moveDirection + Camera.CFrame.RightVector
+				end
+				if Services.UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+					moveDirection = moveDirection + Vector3.new(0, 1, 0)
+				end
+				if Services.UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+					moveDirection = moveDirection - Vector3.new(0, 1, 0)
+				end
+	
+				if moveDirection.Magnitude > 0 then
+					moveDirection = moveDirection.Unit * PlayerSettings.Fly.Speed
+				end
+	
+				if PlayerSettings.Fly.BodyVelocity and PlayerSettings.Fly.BodyVelocity.Parent then
+					PlayerSettings.Fly.BodyVelocity.Velocity = moveDirection
+				end
+			end)
+		else
+			PlayerSettings.Fly.Enabled = false
+			if PlayerSettings.Fly.Connection then
+				PlayerSettings.Fly.Connection:Disconnect()
+				PlayerSettings.Fly.Connection = nil
+			end
+	
+			if Player and Player.Character then
+				local character = Player.Character
+				local root = character:FindFirstChild("HumanoidRootPart")
+				if root then
+					if root:FindFirstChild("FlyBodyVelocity") then
+						root.FlyBodyVelocity:Destroy()
+					end
+				end
+			end
+		end
+	end
+	
+	playerSpeedGroup:AddToggle("FLY", false, function(state)
+		toggleFly(state)
+	end)
+	
+	playerSpeedGroup:AddSlider("FLY SPEED", 16, 100, 30, function(value)
+		PlayerSettings.Fly.Speed = value
+	end)
+	
+	-- TP WALK
+	playerSpeedGroup:AddToggle("TP Walk", false, function(state)
+		PlayerSettings.TpWalk.Enabled = state
+		if state then
+			PlayerSettings.TpWalk.Connection = Services.RunService.RenderStepped:Connect(function()
+				if PlayerSettings.TpWalk.Enabled and Character and Character:FindFirstChild("HumanoidRootPart") then
+					local hrp = Character.HumanoidRootPart
+					local humanoid = Character:FindFirstChildOfClass("Humanoid")
+					if humanoid and humanoid.MoveDirection.Magnitude > 0 then
+						hrp.CFrame = hrp.CFrame + humanoid.MoveDirection * (PlayerSettings.TpWalk.Speed / 100)
+					end
+				end
+			end)
+		elseif PlayerSettings.TpWalk.Connection then
+			PlayerSettings.TpWalk.Connection:Disconnect()
+			PlayerSettings.TpWalk.Connection = nil
+		end
+	end)
+	
+	playerSpeedGroup:AddSlider("TP Walk Speed", 50, 500, PlayerSettings.TpWalk.Speed, function(value)
+		PlayerSettings.TpWalk.Speed = value
+	end)
+	
+	-- CHARACTER MODS
+	playerCharacterGroup:AddToggle("Infinite Jump", false, function(state) 
+		PlayerSettings.InfiniteJump = state 
+	end)
+	
+	playerCharacterGroup:AddToggle("Noclip", false, function(state) 
+		PlayerSettings.Noclip = state 
+	end)
+	
+	-- Noclip and Infinite Jump handlers
+	Services.RunService.Stepped:Connect(function()
+		if PlayerSettings.Noclip and Character then
+			for _, v in pairs(Character:GetDescendants()) do
+				if v:IsA("BasePart") then 
+					v.CanCollide = false 
+				end
+			end
+		end
+	end)
+	
+	Services.UserInputService.JumpRequest:Connect(function()
+		if PlayerSettings.InfiniteJump and Humanoid then
+			Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end)
+
+	-- Re-initialize character reference when it respawns
+	Player.CharacterAdded:Connect(function(newChar)
+		Character = newChar
+		Humanoid = newChar:WaitForChild("Humanoid")
+	end)
+
+	print("=== PLAYER TAB LOADED ===")
+	showNotification("Player Tab", "Player settings loaded successfully!", 3)
+
+	
+-- Add this to your existing script after creating all tabs
+
+-- Create the invisible group in PlayerTab
+local invisibleGroup = menu:CreateCollapsibleGroup(Tabs.PlayerTab, "🎭 INVISIBLE SYSTEM", false, 200)
+menu:MarkAsNew(invisibleGroup:GetInstance(), "NEW")
+
+-- Invisible System Variables
+local InvisibleSystem = {
+    Enabled = false,
+    Depth = 12,
+    MinDepth = 1,
+    MaxDepth = 500,
+    VisualFade = 0.55,
+    RestoreTime = 0.35,
+    
+    -- Internal states
+    _restoring = false,
+    _restoreToken = 0,
+    _character = nil,
+    _humanoid = nil,
+    _hrp = nil,
+    _trackedParts = {},
+    _originalLTM = {},
+    _connections = {},
+    _didOffset = false,
+    _originalCF = nil,
+    _originalCam = nil,
+    _descendantConn = nil,
+    _lastActionTime = 0,
+    _toolConnections = {}
+}
+
+-- Function to clear tracking
+local function clearTracking()
+    for part, prev in pairs(InvisibleSystem._originalLTM) do
+        if part and part.Parent and part:IsA("BasePart") then
+            part.LocalTransparencyModifier = prev
+        end
+    end
+    table.clear(InvisibleSystem._trackedParts)
+    table.clear(InvisibleSystem._originalLTM)
+    if InvisibleSystem._descendantConn then
+        InvisibleSystem._descendantConn:Disconnect()
+        InvisibleSystem._descendantConn = nil
+    end
+end
+
+-- Function to track character parts
+local function trackPart(p)
+    if not p:IsA("BasePart") then return end
+    if InvisibleSystem._originalLTM[p] == nil then
+        InvisibleSystem._originalLTM[p] = p.LocalTransparencyModifier
+    end
+    table.insert(InvisibleSystem._trackedParts, p)
+
+    if InvisibleSystem.Enabled and not InvisibleSystem._restoring then
+        p.LocalTransparencyModifier = InvisibleSystem.VisualFade
+    end
+end
+
+-- Function to scan character
+local function scanCharacter()
+    clearTracking()
+    
+    local player = game.Players.LocalPlayer
+    InvisibleSystem._character = player.Character or player.CharacterAdded:Wait()
+    InvisibleSystem._humanoid = InvisibleSystem._character:WaitForChild("Humanoid")
+    InvisibleSystem._hrp = InvisibleSystem._character:WaitForChild("HumanoidRootPart")
+
+    for _, v in ipairs(InvisibleSystem._character:GetDescendants()) do
+        if v:IsA("BasePart") then
+            trackPart(v)
+        end
+    end
+
+    -- Track new parts (gear/morph)
+    InvisibleSystem._descendantConn = InvisibleSystem._character.DescendantAdded:Connect(function(inst)
+        if inst:IsA("BasePart") then
+            trackPart(inst)
+        end
+    end)
+end
+
+-- Function to apply visual transparency
+local function applyVisual(state)
+    for _, p in ipairs(InvisibleSystem._trackedParts) do
+        if p and p.Parent then
+            if state then
+                p.LocalTransparencyModifier = InvisibleSystem.VisualFade
+            else
+                local prev = InvisibleSystem._originalLTM[p]
+                p.LocalTransparencyModifier = (prev ~= nil) and prev or 0
+            end
+        end
+    end
+end
+
+-- Function to temporarily restore visibility
+local function tempRestore()
+    if not InvisibleSystem.Enabled then return end
+
+    InvisibleSystem._restoreToken = InvisibleSystem._restoreToken + 1
+    local token = InvisibleSystem._restoreToken
+
+    InvisibleSystem._restoring = true
+    applyVisual(false)
+
+    task.delay(InvisibleSystem.RestoreTime, function()
+        if token ~= InvisibleSystem._restoreToken then return end
+        InvisibleSystem._restoring = false
+        if InvisibleSystem.Enabled then
+            applyVisual(true)
+        end
+    end)
+end
+
+-- Function to mark action (triggers temporary restore)
+local function markAction()
+    InvisibleSystem._lastActionTime = os.clock()
+    tempRestore()
+end
+
+-- Tool hook functions
+local function clearToolHooks()
+    for _, c in ipairs(InvisibleSystem._toolConnections) do
+        pcall(function() c:Disconnect() end)
+    end
+    table.clear(InvisibleSystem._toolConnections)
+end
+
+local function hookTool(t)
+    if not t:IsA("Tool") then return end
+    if t:GetAttribute("__inv_hooked") then return end
+    t:SetAttribute("__inv_hooked", true)
+
+    table.insert(InvisibleSystem._toolConnections, t.Activated:Connect(function()
+        if InvisibleSystem.Enabled then markAction() end
+    end))
+end
+
+local function scanTools()
+    clearToolHooks()
+
+    local player = game.Players.LocalPlayer
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    
+    if backpack then
+        for _, it in ipairs(backpack:GetChildren()) do
+            if it:IsA("Tool") then hookTool(it) end
+        end
+        table.insert(InvisibleSystem._toolConnections, backpack.ChildAdded:Connect(function(it)
+            if it:IsA("Tool") then hookTool(it) end
+        end))
+    end
+
+    if InvisibleSystem._character then
+        for _, it in ipairs(InvisibleSystem._character:GetChildren()) do
+            if it:IsA("Tool") then hookTool(it) end
+        end
+        table.insert(InvisibleSystem._toolConnections, InvisibleSystem._character.ChildAdded:Connect(function(it)
+            if it:IsA("Tool") then hookTool(it) end
+        end))
+    end
+end
+
+-- Animation hook
+local function hookAnimations()
+    if not InvisibleSystem._humanoid then return end
+    
+    table.insert(InvisibleSystem._connections, InvisibleSystem._humanoid.AnimationPlayed:Connect(function()
+        if not InvisibleSystem.Enabled then return end
+        -- only treat as action if very recent input/tool happened
+        if (os.clock() - InvisibleSystem._lastActionTime) <= 0.25 then
+            tempRestore()
+        end
+    end))
+end
+
+-- Main function to set invisible state
+local function setInvisible(state)
+    InvisibleSystem.Enabled = state
+    
+    if state then
+        -- Initialize if not already
+        if not InvisibleSystem._character then
+            scanCharacter()
+            scanTools()
+            hookAnimations()
+        end
+        
+        if not InvisibleSystem._restoring then
+            applyVisual(true)
+        end
+        print("🎭 Invisible: ON")
+    else
+        applyVisual(false)
+        print("🎭 Invisible: OFF")
+    end
+end
+
+-- Set up the invisible system connections
+local function setupInvisibleSystem()
+    local UIS = game:GetService("UserInputService")
+    local ProximityPromptService = game:GetService("ProximityPromptService")
+    local RunService = game:GetService("RunService")
+    
+    -- ProximityPrompt hooks
+    table.insert(InvisibleSystem._connections, ProximityPromptService.PromptButtonHoldBegan:Connect(function()
+        if InvisibleSystem.Enabled then markAction() end
+    end))
+    
+    table.insert(InvisibleSystem._connections, ProximityPromptService.PromptTriggered:Connect(function()
+        if InvisibleSystem.Enabled then markAction() end
+    end))
+    
+    -- Input hooks (mouse/E/F)
+    table.insert(InvisibleSystem._connections, UIS.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        
+        -- Action detection
+        if InvisibleSystem.Enabled then
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or
+               input.KeyCode == Enum.KeyCode.E or
+               input.KeyCode == Enum.KeyCode.F then
+                markAction()
+            end
+        end
+    end))
+    
+    -- Heartbeat for offset (moves character down)
+    table.insert(InvisibleSystem._connections, RunService.Heartbeat:Connect(function()
+        if not InvisibleSystem.Enabled or InvisibleSystem._restoring or 
+           not InvisibleSystem._hrp or not InvisibleSystem._humanoid then
+            return
+        end
+
+        InvisibleSystem._originalCF = InvisibleSystem._hrp.CFrame
+        InvisibleSystem._originalCam = InvisibleSystem._humanoid.CameraOffset
+
+        local charHeight = InvisibleSystem._hrp.Size.Y + (InvisibleSystem._humanoid.HipHeight * 2)
+        local tempCF = InvisibleSystem._originalCF * CFrame.new(0, -(charHeight * InvisibleSystem.Depth), 0)
+
+        -- Offset (client-owned HRP replicates -> server/NPC may lose target)
+        InvisibleSystem._hrp.CFrame = tempCF
+
+        -- Keep camera stable
+        InvisibleSystem._humanoid.CameraOffset = tempCF:ToObjectSpace(InvisibleSystem._originalCF).Position
+
+        InvisibleSystem._didOffset = true
+    end))
+    
+    -- RenderStepped for restore (brings character back up visually)
+    table.insert(InvisibleSystem._connections, RunService.RenderStepped:Connect(function()
+        if not InvisibleSystem._didOffset then return end
+
+        -- If char changed mid-frame, just try to restore safely
+        if InvisibleSystem._hrp and InvisibleSystem._originalCF then
+            InvisibleSystem._hrp.CFrame = InvisibleSystem._originalCF
+        end
+        if InvisibleSystem._humanoid and InvisibleSystem._originalCam then
+            InvisibleSystem._humanoid.CameraOffset = InvisibleSystem._originalCam
+        end
+
+        InvisibleSystem._didOffset = false
+    end))
+    
+    -- Character added event
+    table.insert(InvisibleSystem._connections, game.Players.LocalPlayer.CharacterAdded:Connect(function()
+        setInvisible(false)
+        task.wait(0.35)
+        scanCharacter()
+        scanTools()
+        hookAnimations()
+    end))
+end
+
+-- Cleanup function
+local function cleanupInvisibleSystem()
+    setInvisible(false)
+    clearTracking()
+    clearToolHooks()
+    
+    for _, conn in ipairs(InvisibleSystem._connections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    table.clear(InvisibleSystem._connections)
+end
+
+-- Add UI controls to the invisible group
+invisibleGroup:AddToggle("🎭 Enable Invisible", false, function(state)
+    setInvisible(state)
+end)
+
+invisibleGroup:AddSlider("📏 Depth", InvisibleSystem.MinDepth, InvisibleSystem.MaxDepth, 
+    InvisibleSystem.Depth, function(value)
+    InvisibleSystem.Depth = value
+    print("🎭 Depth set to: " .. value)
+end)
+
+invisibleGroup:AddSlider("👁️ Transparency", 0.1, 0.9, InvisibleSystem.VisualFade, function(value)
+    InvisibleSystem.VisualFade = value
+    if InvisibleSystem.Enabled and not InvisibleSystem._restoring then
+        applyVisual(true)
+    end
+    print("🎭 Transparency set to: " .. value)
+end)
+
+invisibleGroup:AddSlider("⏱️ Restore Time", 0.1, 1.0, InvisibleSystem.RestoreTime, function(value)
+    InvisibleSystem.RestoreTime = value
+    print("🎭 Restore time set to: " .. value .. "s")
+end)
+
+invisibleGroup:AddButton("🔄 Refresh Character", function()
+    if game.Players.LocalPlayer.Character then
+        scanCharacter()
+        scanTools()
+        hookAnimations()
+        print("✅ Character refreshed for invisible system")
+    end
+end)
+
+
+
+-- Initialize the system
+task.spawn(function()
+    task.wait(2)
+    setupInvisibleSystem()
+    
+    if game.Players.LocalPlayer.Character then
+        scanCharacter()
+        scanTools()
+        hookAnimations()
+    end
+    
+    print("✅ Invisible System Loaded!")
+    print("   📏 Depth: " .. InvisibleSystem.Depth)
+    print("   👁️ Transparency: " .. InvisibleSystem.VisualFade)
+    print("   ⏱️ Restore Time: " .. InvisibleSystem.RestoreTime .. "s")
+end)
+
+-- Clean up when script ends
+game:GetService("Players").PlayerRemoving:Connect(function(player)
+    if player == game.Players.LocalPlayer then
+        cleanupInvisibleSystem()
+    end
+end)
+
+print("✅ Invisible Hybrid System (No GUI) Ready for SFY Menu Integration!")
+
+
+
+--#1
+
+-- ============================================
+-- ADVANCED ESP SYSTEM FOR VISUAL TAB
+-- ============================================
+
+-- First, create the Visual Tab if it doesn't exist
+if not Tabs.VisualTab then
+    Tabs.VisualTab = menu:CreateTab("ESP")
+end
+
+-- Create ESP Groups
+local espMainGroup = menu:CreateCollapsibleGroup(Tabs.VisualTab, "🎯 ADVANCED ESP", false, 250)
+menu:MarkAsNew(espMainGroup:GetInstance(), "PRO")
+
+-- Create separate collapsible groups for each ESP category
+local lootBoxEspGroup = menu:CreateCollapsibleGroup(Tabs.VisualTab, "📦 LOOT BOX ESP", false, 200)
+local foodEspGroup = menu:CreateCollapsibleGroup(Tabs.VisualTab, "🍎 FOOD ESP", false, 200)
+local materialEspGroup = menu:CreateCollapsibleGroup(Tabs.VisualTab, "⚙️ MATERIAL ESP", false, 200)
+local weaponEspGroup = menu:CreateCollapsibleGroup(Tabs.VisualTab, "🔫 WEAPON ESP", false, 200)
+local enemyEspGroup = menu:CreateCollapsibleGroup(Tabs.VisualTab, "👹 ENEMY ESP", false, 200)
+local visualSettingsGroup = menu:CreateCollapsibleGroup(Tabs.VisualTab, "🎨 VISUAL SETTINGS", false, 150)
+
+-- ESP Configuration
+local ESPConfig = {
+    -- Loot Box ESP
+    LootBoxes = {
+        Enabled = false,
+        Name = true,
+        Distance = true,
+        ShowContents = true,
+        MaxDistance = 500,
+        Color = Color3.fromRGB(255, 215, 0) -- Gold
+    },
+    
+    -- Food ESP
+    Food = {
+        Enabled = false,
+        Name = true,
+        Distance = true,
+        ShowType = true,
+        MaxDistance = 300,
+        Color = Color3.fromRGB(100, 255, 100) -- Green
+    },
+    
+    -- Material ESP
+    Materials = {
+        Enabled = false,
+        Name = true,
+        Distance = true,
+        ShowQuantity = true,
+        MaxDistance = 400,
+        Color = Color3.fromRGB(100, 150, 255) -- Blue
+    },
+    
+    -- Weapon ESP (for workspace.Interactables.Weapons)
+    Weapons = {
+        Enabled = false,
+        Name = true,
+        Distance = true,
+        ShowRarity = false,
+        MaxDistance = 600,
+        Color = Color3.fromRGB(255, 100, 100) -- Red
+    },
+    
+    -- Enemy ESP (for workspace.SpawnedEnemies)
+    Enemies = {
+        Enabled = false,
+        Name = true,
+        Distance = true,
+        ShowHealth = true,
+        MaxDistance = 800,
+        Color = Color3.fromRGB(255, 50, 50) -- Dark Red
+    },
+    
+    -- Visual Settings
+    Visual = {
+        TextSize = 14,
+        Outline = true,
+        FadeDistance = true,
+        ShowTracers = false,
+        ShowBoxes = true
+    }
+}
+
+-- Services
+local Services = {
+    Players = game:GetService("Players"),
+    RunService = game:GetService("RunService"),
+    Workspace = game:GetService("Workspace"),
+    Lighting = game:GetService("Lighting")
+}
+
+local LocalPlayer = Services.Players.LocalPlayer
+local Camera = Services.Workspace.CurrentCamera
+
+-- ESP Storage
+local ESPObjects = {
+    LootBoxes = {},
+    Food = {},
+    Materials = {},
+    Weapons = {},
+    Enemies = {}
+}
+
+-- Drawing Library
+local DrawingLib = {}
+
+-- Create ESP Object
+function createESPObject(name, type, model, extraData)
+    local espObject = {
+        Name = name,
+        Type = type,
+        Model = model,
+        ExtraData = extraData or {},
+        Drawings = {},
+        Valid = true
+    }
+    
+    -- Create text drawing
+    espObject.Drawings.Text = Drawing.new("Text")
+    espObject.Drawings.Text.Visible = false
+    espObject.Drawings.Text.Center = true
+    espObject.Drawings.Text.Outline = ESPConfig.Visual.Outline
+    espObject.Drawings.Text.Size = ESPConfig.Visual.TextSize
+    espObject.Drawings.Text.Font = 2
+    
+    -- Set color based on type
+    local color = ESPConfig[type].Color
+    espObject.Drawings.Text.Color = color
+    
+    -- Create box if enabled
+    if ESPConfig.Visual.ShowBoxes then
+        espObject.Drawings.Box = Drawing.new("Square")
+        espObject.Drawings.Box.Visible = false
+        espObject.Drawings.Box.Thickness = 1
+        espObject.Drawings.Box.Color = color
+        espObject.Drawings.Box.Filled = false
+    end
+    
+    -- Create tracer if enabled
+    if ESPConfig.Visual.ShowTracers then
+        espObject.Drawings.Tracer = Drawing.new("Line")
+        espObject.Drawings.Tracer.Visible = false
+        espObject.Drawings.Tracer.Thickness = 1
+        espObject.Drawings.Tracer.Color = color
+    end
+    
+    return espObject
+end
+
+-- Get distance from player
+function getDistance(position)
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        return math.floor((char.HumanoidRootPart.Position - position).Magnitude)
+    end
+    return 0
+end
+
+-- Scan Functions
+function scanLootBoxes()
+    -- Clean up old objects
+    for _, esp in pairs(ESPObjects.LootBoxes) do
+        if esp.Drawings.Text then esp.Drawings.Text:Remove() end
+        if esp.Drawings.Box then esp.Drawings.Box:Remove() end
+        if esp.Drawings.Tracer then esp.Drawings.Tracer:Remove() end
+    end
+    ESPObjects.LootBoxes = {}
+    
+    if not ESPConfig.LootBoxes.Enabled then return end
+    
+    -- Scan entire workspace for loot boxes
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and (obj.Name:find("Loot") or obj.Name:find("Chest") or obj.Name:find("Box")) then
+            local extraData = {
+                Contents = "Random Loot",
+                Rarity = "Common"
+            }
+            
+            for _, child in pairs(obj:GetDescendants()) do
+                if child:IsA("StringValue") and child.Name == "Contents" then
+                    extraData.Contents = child.Value
+                end
+            end
+            
+            local esp = createESPObject(obj.Name, "LootBoxes", obj, extraData)
+            ESPObjects.LootBoxes[obj] = esp
+        end
+    end
+end
+
+function scanFood()
+    for _, esp in pairs(ESPObjects.Food) do
+        if esp.Drawings.Text then esp.Drawings.Text:Remove() end
+        if esp.Drawings.Box then esp.Drawings.Box:Remove() end
+        if esp.Drawings.Tracer then esp.Drawings.Tracer:Remove() end
+    end
+    ESPObjects.Food = {}
+    
+    if not ESPConfig.Food.Enabled then return end
+    
+    local looseFoodsFolder = Workspace:FindFirstChild("Map")
+    if looseFoodsFolder then
+        looseFoodsFolder = looseFoodsFolder:FindFirstChild("LooseFoods")
+    end
+    
+    if not looseFoodsFolder then return end
+    
+    for _, looseFoodModel in pairs(looseFoodsFolder:GetChildren()) do
+        if looseFoodModel.Name == "LooseFood" then
+            for _, foodItem in pairs(looseFoodModel:GetChildren()) do
+                if foodItem:IsA("Model") or foodItem:IsA("BasePart") then
+                    local foodName = foodItem.Name
+                    local foodType = "Food"
+                    
+                    if foodName:find("Apple") then foodType = "Apple"
+                    elseif foodName:find("Bread") then foodType = "Bread"
+                    elseif foodName:find("Meat") then foodType = "Meat"
+                    elseif foodName:find("Fish") then foodType = "Fish"
+                    elseif foodName:find("Water") then foodType = "Water"
+                    elseif foodName:find("Health") then foodType = "HealthPack"
+                    end
+                    
+                    local extraData = {
+                        FoodType = foodType,
+                        HealAmount = 10
+                    }
+                    
+                    local esp = createESPObject(foodName, "Food", foodItem, extraData)
+                    ESPObjects.Food[foodItem] = esp
+                end
+            end
+        end
+    end
+end
+
+function scanMaterials()
+    for _, esp in pairs(ESPObjects.Materials) do
+        if esp.Drawings.Text then esp.Drawings.Text:Remove() end
+        if esp.Drawings.Box then esp.Drawings.Box:Remove() end
+        if esp.Drawings.Tracer then esp.Drawings.Tracer:Remove() end
+    end
+    ESPObjects.Materials = {}
+    
+    if not ESPConfig.Materials.Enabled then return end
+    
+    local materialsFolder = Workspace:FindFirstChild("TutorialMaterials")
+    if not materialsFolder then return end
+    
+    for _, material in pairs(materialsFolder:GetChildren()) do
+        if material:IsA("Model") or material:IsA("BasePart") then
+            local materialName = material.Name
+            local materialType = "Material"
+            
+            if materialName:find("Wood") then materialType = "Wood"
+            elseif materialName:find("Stone") then materialType = "Stone"
+            elseif materialName:find("Metal") then materialType = "Metal"
+            elseif materialName:find("Fiber") then materialType = "Fiber"
+            elseif materialName:find("Ore") then materialType = "Ore"
+            end
+            
+            local extraData = {
+                MaterialType = materialType,
+                Quantity = 1
+            }
+            
+            local esp = createESPObject(materialName, "Materials", material, extraData)
+            ESPObjects.Materials[material] = esp
+        end
+    end
+end
+
+function scanWeapons()
+    for _, esp in pairs(ESPObjects.Weapons) do
+        if esp.Drawings.Text then esp.Drawings.Text:Remove() end
+        if esp.Drawings.Box then esp.Drawings.Box:Remove() end
+        if esp.Drawings.Tracer then esp.Drawings.Tracer:Remove() end
+    end
+    ESPObjects.Weapons = {}
+    
+    if not ESPConfig.Weapons.Enabled then return end
+    
+    local weaponsFolder = Workspace:FindFirstChild("Interactables")
+    if weaponsFolder then
+        weaponsFolder = weaponsFolder:FindFirstChild("Weapons")
+    end
+    
+    if weaponsFolder then
+        for _, weapon in pairs(weaponsFolder:GetChildren()) do
+            if weapon:IsA("Model") or weapon:IsA("BasePart") then
+                local esp = createESPObject(weapon.Name, "Weapons", weapon)
+                ESPObjects.Weapons[weapon] = esp
+            end
+        end
+    end
+end
+
+function scanEnemies()
+    for _, esp in pairs(ESPObjects.Enemies) do
+        if esp.Drawings.Text then esp.Drawings.Text:Remove() end
+        if esp.Drawings.Box then esp.Drawings.Box:Remove() end
+        if esp.Drawings.Tracer then esp.Drawings.Tracer:Remove() end
+    end
+    ESPObjects.Enemies = {}
+    
+    if not ESPConfig.Enemies.Enabled then return end
+    
+    local enemiesFolder = Workspace:FindFirstChild("SpawnedEnemies")
+    if enemiesFolder then
+        for _, enemy in pairs(enemiesFolder:GetChildren()) do
+            if enemy:IsA("Model") and enemy:FindFirstChild("HumanoidRootPart") then
+                local esp = createESPObject(enemy.Name, "Enemies", enemy)
+                ESPObjects.Enemies[enemy] = esp
+            end
+        end
+    end
+end
+
+-- Update ESP
+function updateESP()
+    for category, objects in pairs(ESPObjects) do
+        local config = ESPConfig[category]
+        if not config.Enabled then continue end
+        
+        for model, esp in pairs(objects) do
+            if not esp.Valid or not model or not model.Parent then
+                if esp.Drawings.Text then esp.Drawings.Text:Remove() end
+                if esp.Drawings.Box then esp.Drawings.Box:Remove() end
+                if esp.Drawings.Tracer then esp.Drawings.Tracer:Remove() end
+                objects[model] = nil
+                continue
+            end
+            
+            local position
+            if model:IsA("Model") then
+                local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+                position = hrp and hrp.Position or model:GetPivot().Position
+            else
+                position = model.Position
+            end
+            
+            local distance = getDistance(position)
+            if distance > config.MaxDistance then
+                esp.Drawings.Text.Visible = false
+                if esp.Drawings.Box then esp.Drawings.Box.Visible = false end
+                if esp.Drawings.Tracer then esp.Drawings.Tracer.Visible = false end
+                continue
+            end
+            
+            local screenPos, onScreen = Camera:WorldToViewportPoint(position)
+            if not onScreen then
+                esp.Drawings.Text.Visible = false
+                if esp.Drawings.Box then esp.Drawings.Box.Visible = false end
+                if esp.Drawings.Tracer then esp.Drawings.Tracer.Visible = false end
+                continue
+            end
+            
+            local screenVec2 = Vector2.new(screenPos.X, screenPos.Y)
+            
+            -- Update text
+            local displayText = ""
+            if config.Name then
+                displayText = esp.Name
+            end
+            if config.Distance then
+                if displayText ~= "" then
+                    displayText = displayText .. " [" .. distance .. "m]"
+                else
+                    displayText = distance .. "m"
+                end
+            end
+            
+            -- Add extra info
+            if category == "Food" and config.ShowType and esp.ExtraData.FoodType then
+                displayText = displayText .. "\n" .. esp.ExtraData.FoodType
+            elseif category == "Materials" and config.ShowQuantity and esp.ExtraData.MaterialType then
+                displayText = displayText .. "\n" .. esp.ExtraData.MaterialType
+            elseif category == "LootBoxes" and config.ShowContents and esp.ExtraData.Contents then
+                displayText = displayText .. "\n" .. esp.ExtraData.Contents
+            end
+            
+            if displayText ~= "" then
+                esp.Drawings.Text.Text = displayText
+                esp.Drawings.Text.Position = screenVec2
+                esp.Drawings.Text.Visible = true
+            else
+                esp.Drawings.Text.Visible = false
+            end
+            
+            -- Update box
+            if esp.Drawings.Box then
+                esp.Drawings.Box.Size = Vector2.new(30, 30)
+                esp.Drawings.Box.Position = screenVec2 - Vector2.new(15, 15)
+                esp.Drawings.Box.Visible = true
+            end
+            
+            -- Update tracer
+            if esp.Drawings.Tracer then
+                esp.Drawings.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                esp.Drawings.Tracer.To = screenVec2
+                esp.Drawings.Tracer.Visible = true
+            end
+        end
+    end
+end
+
+-- ESP Loop
+local espLoop
+function startESPLoop()
+    if espLoop then return end
+    
+    espLoop = Services.RunService.RenderStepped:Connect(function()
+        updateESP()
+    end)
+end
+
+function stopESPLoop()
+    if espLoop then
+        espLoop:Disconnect()
+        espLoop = nil
+    end
+end
+
+-- UI Controls for Loot Box ESP
+lootBoxEspGroup:AddToggle("Enable Loot Box ESP", ESPConfig.LootBoxes.Enabled, function(state)
+    ESPConfig.LootBoxes.Enabled = state
+    if state then
+        scanLootBoxes()
+        startESPLoop()
+    else
+        scanLootBoxes()
+    end
+    showNotification("ESP", state and "Loot Box ESP Enabled" or "Loot Box ESP Disabled", 2)
+end)
+
+lootBoxEspGroup:AddToggle("Show Name", ESPConfig.LootBoxes.Name, function(state)
+    ESPConfig.LootBoxes.Name = state
+end)
+
+lootBoxEspGroup:AddToggle("Show Distance", ESPConfig.LootBoxes.Distance, function(state)
+    ESPConfig.LootBoxes.Distance = state
+end)
+
+lootBoxEspGroup:AddToggle("Show Contents", ESPConfig.LootBoxes.ShowContents, function(state)
+    ESPConfig.LootBoxes.ShowContents = state
+end)
+
+lootBoxEspGroup:AddSlider("Max Distance", 50, 2000, ESPConfig.LootBoxes.MaxDistance, function(value)
+    ESPConfig.LootBoxes.MaxDistance = value
+end)
+
+lootBoxEspGroup:AddButton("🔄 Scan Now", function()
+    scanLootBoxes()
+    showNotification("ESP", "Loot boxes scanned", 2)
+end)
+
+-- UI Controls for Food ESP
+foodEspGroup:AddToggle("Enable Food ESP", ESPConfig.Food.Enabled, function(state)
+    ESPConfig.Food.Enabled = state
+    if state then
+        scanFood()
+        startESPLoop()
+    else
+        scanFood()
+    end
+    showNotification("ESP", state and "Food ESP Enabled" or "Food ESP Disabled", 2)
+end)
+
+foodEspGroup:AddToggle("Show Name", ESPConfig.Food.Name, function(state)
+    ESPConfig.Food.Name = state
+end)
+
+foodEspGroup:AddToggle("Show Distance", ESPConfig.Food.Distance, function(state)
+    ESPConfig.Food.Distance = state
+end)
+
+foodEspGroup:AddToggle("Show Food Type", ESPConfig.Food.ShowType, function(state)
+    ESPConfig.Food.ShowType = state
+end)
+
+foodEspGroup:AddSlider("Max Distance", 50, 1000, ESPConfig.Food.MaxDistance, function(value)
+    ESPConfig.Food.MaxDistance = value
+end)
+
+foodEspGroup:AddButton("🔄 Scan Now", function()
+    scanFood()
+    showNotification("ESP", "Food items scanned", 2)
+end)
+
+-- UI Controls for Material ESP
+materialEspGroup:AddToggle("Enable Material ESP", ESPConfig.Materials.Enabled, function(state)
+    ESPConfig.Materials.Enabled = state
+    if state then
+        scanMaterials()
+        startESPLoop()
+    else
+        scanMaterials()
+    end
+    showNotification("ESP", state and "Material ESP Enabled" or "Material ESP Disabled", 2)
+end)
+
+materialEspGroup:AddToggle("Show Name", ESPConfig.Materials.Name, function(state)
+    ESPConfig.Materials.Name = state
+end)
+
+materialEspGroup:AddToggle("Show Distance", ESPConfig.Materials.Distance, function(state)
+    ESPConfig.Materials.Distance = state
+end)
+
+materialEspGroup:AddToggle("Show Quantity", ESPConfig.Materials.ShowQuantity, function(state)
+    ESPConfig.Materials.ShowQuantity = state
+end)
+
+materialEspGroup:AddSlider("Max Distance", 50, 1500, ESPConfig.Materials.MaxDistance, function(value)
+    ESPConfig.Materials.MaxDistance = value
+end)
+
+materialEspGroup:AddButton("🔄 Scan Now", function()
+    scanMaterials()
+    showNotification("ESP", "Materials scanned", 2)
+end)
+
+-- UI Controls for Weapon ESP
+weaponEspGroup:AddToggle("Enable Weapon ESP", ESPConfig.Weapons.Enabled, function(state)
+    ESPConfig.Weapons.Enabled = state
+    if state then
+        scanWeapons()
+        startESPLoop()
+    else
+        scanWeapons()
+    end
+    showNotification("ESP", state and "Weapon ESP Enabled" or "Weapon ESP Disabled", 2)
+end)
+
+weaponEspGroup:AddToggle("Show Name", ESPConfig.Weapons.Name, function(state)
+    ESPConfig.Weapons.Name = state
+end)
+
+weaponEspGroup:AddToggle("Show Distance", ESPConfig.Weapons.Distance, function(state)
+    ESPConfig.Weapons.Distance = state
+end)
+
+weaponEspGroup:AddSlider("Max Distance", 50, 2000, ESPConfig.Weapons.MaxDistance, function(value)
+    ESPConfig.Weapons.MaxDistance = value
+end)
+
+weaponEspGroup:AddButton("🔄 Scan Now", function()
+    scanWeapons()
+    showNotification("ESP", "Weapons scanned", 2)
+end)
+
+-- UI Controls for Enemy ESP
+enemyEspGroup:AddToggle("Enable Enemy ESP", ESPConfig.Enemies.Enabled, function(state)
+    ESPConfig.Enemies.Enabled = state
+    if state then
+        scanEnemies()
+        startESPLoop()
+    else
+        scanEnemies()
+    end
+    showNotification("ESP", state and "Enemy ESP Enabled" or "Enemy ESP Disabled", 2)
+end)
+
+enemyEspGroup:AddToggle("Show Name", ESPConfig.Enemies.Name, function(state)
+    ESPConfig.Enemies.Name = state
+end)
+
+enemyEspGroup:AddToggle("Show Distance", ESPConfig.Enemies.Distance, function(state)
+    ESPConfig.Enemies.Distance = state
+end)
+
+enemyEspGroup:AddToggle("Show Health", ESPConfig.Enemies.ShowHealth, function(state)
+    ESPConfig.Enemies.ShowHealth = state
+end)
+
+enemyEspGroup:AddSlider("Max Distance", 50, 2000, ESPConfig.Enemies.MaxDistance, function(value)
+    ESPConfig.Enemies.MaxDistance = value
+end)
+
+enemyEspGroup:AddButton("🔄 Scan Now", function()
+    scanEnemies()
+    showNotification("ESP", "Enemies scanned", 2)
+end)
+
+-- UI Controls for Visual Settings
+visualSettingsGroup:AddSlider("Text Size", 10, 20, ESPConfig.Visual.TextSize, function(value)
+    ESPConfig.Visual.TextSize = value
+end)
+
+visualSettingsGroup:AddToggle("Outline Text", ESPConfig.Visual.Outline, function(state)
+    ESPConfig.Visual.Outline = state
+end)
+
+visualSettingsGroup:AddToggle("Fade with Distance", ESPConfig.Visual.FadeDistance, function(state)
+    ESPConfig.Visual.FadeDistance = state
+end)
+
+visualSettingsGroup:AddToggle("Show Boxes", ESPConfig.Visual.ShowBoxes, function(state)
+    ESPConfig.Visual.ShowBoxes = state
+end)
+
+visualSettingsGroup:AddToggle("Show Tracers", ESPConfig.Visual.ShowTracers, function(state)
+    ESPConfig.Visual.ShowTracers = state
+end)
+
+-- Control Buttons in Main ESP Group
+espMainGroup:AddButton("🚀 Enable All ESP", function()
+    ESPConfig.LootBoxes.Enabled = true
+    ESPConfig.Food.Enabled = true
+    ESPConfig.Materials.Enabled = true
+    ESPConfig.Weapons.Enabled = true
+    ESPConfig.Enemies.Enabled = true
+    
+    scanLootBoxes()
+    scanFood()
+    scanMaterials()
+    scanWeapons()
+    scanEnemies()
+    startESPLoop()
+    
+    showNotification("ESP", "All ESP systems enabled!", 3)
+end)
+
+espMainGroup:AddButton("🛑 Disable All ESP", function()
+    ESPConfig.LootBoxes.Enabled = false
+    ESPConfig.Food.Enabled = false
+    ESPConfig.Materials.Enabled = false
+    ESPConfig.Weapons.Enabled = false
+    ESPConfig.Enemies.Enabled = false
+    
+    scanLootBoxes()
+    scanFood()
+    scanMaterials()
+    scanWeapons()
+    scanEnemies()
+    stopESPLoop()
+    
+    showNotification("ESP", "All ESP systems disabled!", 3)
+end)
+
+espMainGroup:AddButton("🔄 Refresh All ESP", function()
+    scanLootBoxes()
+    scanFood()
+    scanMaterials()
+    scanWeapons()
+    scanEnemies()
+    showNotification("ESP", "All ESP refreshed!", 2)
+end)
+
+espMainGroup:AddLabel("ℹ️ ESP Features:")
+espMainGroup:AddLabel("  • 📦 Loot Box detection")
+espMainGroup:AddLabel("  • 🍎 Food items with types")
+espMainGroup:AddLabel("  • ⚙️ Materials from TutorialMaterials")
+espMainGroup:AddLabel("  • 🔫 Weapons from workspace.Interactables.Weapons")
+espMainGroup:AddLabel("  • 👹 Enemies from workspace.SpawnedEnemies")
+
+-- Initialize ESP
+task.spawn(function()
+    task.wait(3)
+    print("✅ Advanced ESP System Loaded!")
+    print("   📦 Loot Box ESP: " .. (ESPConfig.LootBoxes.Enabled and "Enabled" or "Disabled"))
+    print("   🍎 Food ESP: " .. (ESPConfig.Food.Enabled and "Enabled" or "Disabled"))
+    print("   ⚙️ Material ESP: " .. (ESPConfig.Materials.Enabled and "Enabled" or "Disabled"))
+    print("   🔫 Weapon ESP: " .. (ESPConfig.Weapons.Enabled and "Enabled" or "Disabled"))
+    print("   👹 Enemy ESP: " .. (ESPConfig.Enemies.Enabled and "Enabled" or "Disabled"))
+end)
+
+-- Cleanup
+game:GetService("Players").PlayerRemoving:Connect(function(player)
+    if player == LocalPlayer then
+        stopESPLoop()
+        
+        -- Remove all drawings
+        for category, objects in pairs(ESPObjects) do
+            for _, esp in pairs(objects) do
+                if esp.Drawings.Text then esp.Drawings.Text:Remove() end
+                if esp.Drawings.Box then esp.Drawings.Box:Remove() end
+                if esp.Drawings.Tracer then esp.Drawings.Tracer:Remove() end
+            end
+            table.clear(objects)
+        end
+    end
+end)
+
+showNotification("Advanced ESP", "System loaded successfully!", 3)
