@@ -27,8 +27,8 @@
 	local welcomePanel = menu:CreateWelcomePanelTab(Tabs.InfoTab, {
 		ScriptName = "LOST AILES",
 		Version = "V2.5",
-		Developer = "SFY_devs",
-		Discord = "discord.gg/wcpvkVPEAA",
+		Developer = "Crack By KGuestCheatsJ",
+		Discord = "discord.gg/XmbxNB4qs6",
 		Description = "Farm ALL weapons of selected types",
 		Features = {
 			"⛽ Auto Fuel Generator",
